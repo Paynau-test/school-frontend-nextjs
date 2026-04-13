@@ -1,0 +1,5 @@
+node_modules
+.next
+.dev.pid
+.dev.log
+.git
