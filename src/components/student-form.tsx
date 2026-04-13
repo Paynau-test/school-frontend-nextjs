@@ -110,7 +110,7 @@ export default function StudentForm({ initial, onSubmit, submitLabel }: Props) {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Apellido Paterno *
@@ -139,7 +139,7 @@ export default function StudentForm({ initial, onSubmit, submitLabel }: Props) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Fecha de Nacimiento *
@@ -169,7 +169,7 @@ export default function StudentForm({ initial, onSubmit, submitLabel }: Props) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Grado *
