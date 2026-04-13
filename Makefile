@@ -9,7 +9,7 @@ PID_FILE    := .dev.pid
 LOG_FILE    := .dev.log
 
 .PHONY: install dev stop restart status logs logs-tail build start \
-        deploy deploy-info destroy help
+        deploy deploy-setup deploy-info destroy help
 
 # ── Setup ───────────────────────────────────
 
@@ -87,10 +87,11 @@ start:
 	@npx next start -p 3001
 
 # ── Deploy to AWS Amplify ───────────────────
-# Builds locally and uploads to Amplify. No GitHub connection needed.
-# Same pattern as SAM deploy: build + push from your machine.
+# First time:  make deploy-setup  (creates app, prints console URL to connect GitHub)
+# After setup: make deploy        (triggers a build on Amplify from latest push)
+# Auto-deploy: every git push to main triggers build automatically
 
-deploy:
+deploy-setup:
 	@echo "Reading API URL from school-api-node stack..."
 	@API_URL=$$(aws cloudformation describe-stacks \
 		--stack-name school-api-node --region $(REGION) \
@@ -98,59 +99,61 @@ deploy:
 		--output text) && \
 	echo "API URL: $$API_URL" && \
 	echo "" && \
-	echo "Building Next.js..." && \
-	NEXT_PUBLIC_API_URL=$$API_URL npx next build && \
-	echo "" && \
-	APP_ID=$$(aws amplify list-apps --region $(REGION) \
+	EXISTING=$$(aws amplify list-apps --region $(REGION) \
 		--query "apps[?name=='$(APP_NAME)'].appId" --output text 2>/dev/null) && \
-	if [ -z "$$APP_ID" ] || [ "$$APP_ID" = "None" ]; then \
-		echo "Creating Amplify app..." && \
-		APP_ID=$$(aws amplify create-app \
-			--name $(APP_NAME) \
-			--region $(REGION) \
-			--platform WEB_COMPUTE \
-			--environment-variables NEXT_PUBLIC_API_URL=$$API_URL \
-			--query 'app.appId' --output text) && \
-		aws amplify create-branch \
-			--app-id $$APP_ID \
-			--branch-name $(BRANCH) \
-			--region $(REGION) \
-			--stage PRODUCTION > /dev/null && \
-		echo "App created: $$APP_ID"; \
-	else \
-		echo "App exists: $$APP_ID" && \
-		aws amplify update-app \
-			--app-id $$APP_ID \
-			--region $(REGION) \
-			--environment-variables NEXT_PUBLIC_API_URL=$$API_URL > /dev/null; \
+	if [ -n "$$EXISTING" ] && [ "$$EXISTING" != "None" ]; then \
+		echo "App already exists: $$EXISTING" && \
+		echo "Console: https://$(REGION).console.aws.amazon.com/amplify/apps/$$EXISTING" && \
+		exit 0; \
 	fi && \
-	echo "Uploading build..." && \
-	cd .next && zip -r /tmp/amplify-deploy.zip . -q && cd .. && \
-	DEPLOY_RESULT=$$(aws amplify create-deployment \
-		--app-id $$APP_ID \
-		--branch-name $(BRANCH) \
+	echo "Creating Amplify app..." && \
+	APP_ID=$$(aws amplify create-app \
+		--name $(APP_NAME) \
 		--region $(REGION) \
-		--output json) && \
-	UPLOAD_URL=$$(echo "$$DEPLOY_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['zipUploadUrl'])") && \
-	JOB_ID=$$(echo "$$DEPLOY_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['jobId'])") && \
-	curl -s -T /tmp/amplify-deploy.zip "$$UPLOAD_URL" > /dev/null && \
-	aws amplify start-deployment \
+		--platform WEB_COMPUTE \
+		--environment-variables NEXT_PUBLIC_API_URL=$$API_URL \
+		--build-spec "$$(cat amplify.yml)" \
+		--query 'app.appId' --output text) && \
+	echo "" && \
+	echo "App created: $$APP_ID" && \
+	echo "" && \
+	echo ">>> Connect your GitHub repo in the Amplify Console:" && \
+	echo "    https://$(REGION).console.aws.amazon.com/amplify/apps/$$APP_ID" && \
+	echo "" && \
+	echo "    1. Click 'Host web app'" && \
+	echo "    2. Select GitHub → authorize → pick repo school-frontend-nextjs" && \
+	echo "    3. Branch: main → Save and deploy" && \
+	echo "" && \
+	echo "After that, every 'git push' auto-deploys. Or use: make deploy"
+
+deploy:
+	@APP_ID=$$(aws amplify list-apps --region $(REGION) \
+		--query "apps[?name=='$(APP_NAME)'].appId" --output text) && \
+	if [ -z "$$APP_ID" ] || [ "$$APP_ID" = "None" ]; then \
+		echo "No Amplify app found. Run: make deploy-setup"; \
+		exit 1; \
+	fi && \
+	API_URL=$$(aws cloudformation describe-stacks \
+		--stack-name school-api-node --region $(REGION) \
+		--query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' \
+		--output text) && \
+	aws amplify update-app \
+		--app-id $$APP_ID \
+		--region $(REGION) \
+		--environment-variables NEXT_PUBLIC_API_URL=$$API_URL > /dev/null && \
+	aws amplify start-job \
 		--app-id $$APP_ID \
 		--branch-name $(BRANCH) \
-		--job-id $$JOB_ID \
+		--job-type RELEASE \
 		--region $(REGION) > /dev/null && \
-	DOMAIN=$$(aws amplify get-app --app-id $$APP_ID --region $(REGION) \
-		--query 'app.defaultDomain' --output text) && \
-	echo "" && \
-	echo "Deploy started." && \
-	echo "URL: https://$(BRANCH).$$DOMAIN" && \
-	echo "Status: make deploy-info"
+	echo "Deploy triggered on Amplify (builds from GitHub)." && \
+	echo "Check: make deploy-info"
 
 deploy-info:
 	@APP_ID=$$(aws amplify list-apps --region $(REGION) \
 		--query "apps[?name=='$(APP_NAME)'].appId" --output text) && \
 	if [ -z "$$APP_ID" ] || [ "$$APP_ID" = "None" ]; then \
-		echo "No Amplify app found. Run: make deploy"; \
+		echo "No Amplify app found. Run: make deploy-setup"; \
 		exit 1; \
 	fi && \
 	DOMAIN=$$(aws amplify get-app --app-id $$APP_ID --region $(REGION) \
@@ -178,19 +181,20 @@ help:
 	@echo ""
 	@echo "school-frontend-nextjs commands:"
 	@echo ""
-	@echo "  make dev          Start dev server in background (port 3001)"
-	@echo "  make stop         Stop the dev server"
-	@echo "  make restart      Stop + start"
-	@echo "  make status       Check if dev server is running"
+	@echo "  make dev            Start dev server in background (port 3001)"
+	@echo "  make stop           Stop the dev server"
+	@echo "  make restart        Stop + start"
+	@echo "  make status         Check if dev server is running"
 	@echo ""
-	@echo "  make logs         Last 50 lines of output"
-	@echo "  make logs-tail    Follow logs in real-time (Ctrl+C to exit)"
+	@echo "  make logs           Last 50 lines of output"
+	@echo "  make logs-tail      Follow logs in real-time (Ctrl+C to exit)"
 	@echo ""
-	@echo "  make install      Install dependencies"
-	@echo "  make build        Production build"
-	@echo "  make start        Start production server (port 3001)"
+	@echo "  make install        Install dependencies"
+	@echo "  make build          Production build"
+	@echo "  make start          Start production server (port 3001)"
 	@echo ""
-	@echo "  make deploy       Build and deploy to AWS Amplify"
-	@echo "  make deploy-info  Show app URL and recent deploy status"
-	@echo "  make destroy      Delete Amplify app"
+	@echo "  make deploy-setup   First-time: create Amplify app + connect GitHub"
+	@echo "  make deploy         Trigger build from latest push"
+	@echo "  make deploy-info    Show URL and recent deploy status"
+	@echo "  make destroy        Delete Amplify app"
 	@echo ""
