@@ -1,36 +1,46 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# school-frontend-nextjs
 
-## Getting Started
+Web frontend for student management (Pedido 1) built with Next.js 15, React 19 and Tailwind CSS.
 
-First, run the development server:
+## Features
+
+- Login with JWT authentication (via Node.js API)
+- Student CRUD (create, read, update, soft delete)
+- Search students by ID or name with debounce
+- Filter by status (active, inactive, suspended)
+- Role-based access: admin (full CRUD) vs teacher (read-only)
+- Responsive design with Tailwind CSS
+
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Run locally in Docker (port 3001)
+make dev
+
+# View logs
+make logs
+
+# Stop
+make stop
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Architecture
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **Framework**: Next.js 15 (App Router) with TypeScript
+- **Styling**: Tailwind CSS 4
+- **API**: Consumes school-api-node (Node.js/Lambda)
+- **Deploy**: AWS Amplify (auto-deploy on push to main)
+- **Auth**: JWT stored in localStorage with React Context
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Production
 
-## Learn More
+```bash
+# First time setup
+make deploy-setup
 
-To learn more about Next.js, take a look at the following resources:
+# Subsequent deploys (push + trigger build)
+make deploy
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# Check deploy status
+make deploy-info
+```
